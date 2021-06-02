@@ -4,7 +4,6 @@
 // be done in console commands.
 
 #include <string.h>  // for NULL
-#include <stdlib.h>  // for atoi and itoa (though this code implement a version of that)
 #include <stdbool.h>
 #include "console.h"
 #include "consoleIo.h"
@@ -121,6 +120,13 @@ void ConsoleInit(void)
 		mReceiveBuffer[i] = NULL_CHAR;
 	}
 
+    // okay for this to be local, it's not held on to by ConsoleIoWatch
+    uint8_t splitchar = '\r';
+    if ( CONSOLE_SUCCESS != ConsoleIoWatch(CONSOLE_COMMAND_MAX_LENGTH, &splitchar) )
+    {
+        ConsoleIoSendString("Failed to setup RX. Oh no.");
+        ConsoleIoSendString(STR_ENDLINE);
+    }
 }
 
 // ConsoleProcess
@@ -129,13 +135,15 @@ void ConsoleInit(void)
 void ConsoleProcess(void)
 {
 	const sConsoleCommandTable_T* commandTable;
-	uint32_t received;
+	uint32_t received = 0;
 	uint32_t cmdIndex;
 	int32_t  cmdEndline;
 	int32_t  found;
 	eCommandResult_T result;
 
-	ConsoleIoReceive((uint8_t*)&(mReceiveBuffer[mReceivedSoFar]), ( CONSOLE_COMMAND_MAX_LENGTH - mReceivedSoFar ), &received);
+    if (mReceivedSoFar < CONSOLE_COMMAND_MAX_LENGTH) {
+        ConsoleIoCheckRx((uint8_t*)&(mReceiveBuffer[mReceivedSoFar]), &received);
+    }
 	if ( received > 0u )
 	{
 		mReceivedSoFar += received;
@@ -208,6 +216,21 @@ static eCommandResult_T ConsoleParamFindN(const char * buffer, const uint8_t par
 		*startLocation = bufferIndex;
 	}
 	return result;
+}
+
+static int atoi(const char *nptr) {
+    int retval = 0, i = 0;
+    bool negate = false;
+    if (nptr[0] == '-') {
+        negate = true;
+        i = 1;
+    }
+    while ('0' <= nptr[i] && nptr[i] <= '9') {
+        retval *= 10;
+        retval += nptr[i] - '0';
+        i++;
+    }
+    return (negate ? -retval : retval);
 }
 
 // ConsoleReceiveParamInt16
@@ -330,7 +353,8 @@ eCommandResult_T ConsoleSendParamHexUint8(uint8_t parameterUint8)
 
 // The C library itoa is sometimes a complicated function and the library costs aren't worth it
 // so this is implements the parts of the function needed for console.
-static void __itoa(int in, char* outBuffer, int radix)
+
+static void itoa(int in, char* outBuffer, int radix)
 {
 	bool isNegative = false;
 	int tmpIn;
@@ -364,6 +388,7 @@ static void __itoa(int in, char* outBuffer, int radix)
 }
 
 
+
 // ConsoleSendParamInt16
 // Send a parameter of type int16 using the (unsafe) C library function
 // __itoa to translate from integer to string.
@@ -372,7 +397,7 @@ eCommandResult_T ConsoleSendParamInt16(int16_t parameterInt)
 	char out[INT16_MAX_STR_LENGTH];
 //	memset(out, 0, INT16_MAX_STR_LENGTH);
 
-	__itoa (parameterInt, out, 10);
+	itoa (parameterInt, out, 10);
 	ConsoleIoSendString(out);
 
 	return COMMAND_SUCCESS;
@@ -386,7 +411,7 @@ eCommandResult_T ConsoleSendParamInt32(int32_t parameterInt)
 	char out[INT32_MAX_STR_LENGTH];
 	memset(out, 0, sizeof(out));
 
-	__itoa (parameterInt, out, 10);
+	itoa (parameterInt, out, 10);
 	ConsoleIoSendString(out);
 
 	return COMMAND_SUCCESS;
